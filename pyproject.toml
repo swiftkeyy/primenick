@@ -1,0 +1,41 @@
+[project]
+name = "prime-nick-saas"
+version = "1.0.0"
+description = "PRIME NICK production-grade Telegram SaaS bot for username generation, reservation and sales"
+requires-python = ">=3.13"
+dependencies = [
+  "aiogram>=3.10,<4",
+  "aiohttp>=3.10,<4",
+  "SQLAlchemy[asyncio]>=2.0.30,<3",
+  "asyncpg>=0.29,<1",
+  "alembic>=1.13,<2",
+  "pydantic>=2.8,<3",
+  "pydantic-settings>=2.4,<3",
+  "redis[hiredis]>=5.0,<6",
+  "celery[redis]>=5.4,<6",
+  "pyrogram>=2.0,<3",
+  "tgcrypto>=1.2,<2",
+  "prometheus-client>=0.20,<1",
+  "opentelemetry-api>=1.26,<2",
+  "opentelemetry-sdk>=1.26,<2",
+  "opentelemetry-instrumentation-aiohttp-client>=0.47b0",
+  "structlog>=24.2,<25",
+  "orjson>=3.10,<4",
+  "cryptography>=42,<44",
+  "PyJWT>=2.9,<3",
+  "tenacity>=8.5,<9",
+  "httpx[http2]>=0.27,<1",
+  "uvloop>=0.19,<1; platform_system != 'Windows'",
+  "python-dateutil>=2.9,<3"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

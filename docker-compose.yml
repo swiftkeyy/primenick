@@ -1,0 +1,140 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "app.bot.main"]
+    networks: [edge, backend]
+    expose: ["8080"]
+    read_only: true
+    tmpfs: ["/tmp:noexec,nosuid,size=64m"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    pids_limit: 512
+    deploy:
+      resources:
+        limits: { cpus: "1.50", memory: 768M }
+        reservations: { cpus: "0.25", memory: 256M }
+
+  worker-default:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    depends_on: [redis, postgres]
+    command: ["celery", "-A", "app.core.celery_app.celery_app", "worker", "-Q", "default,availability,payments,analytics", "--loglevel=INFO", "--concurrency=4", "--prefetch-multiplier=1", "--max-tasks-per-child=1000"]
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    deploy:
+      resources:
+        limits: { cpus: "2.00", memory: 1G }
+
+  worker-priority:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    depends_on: [redis, postgres]
+    command: ["celery", "-A", "app.core.celery_app.celery_app", "worker", "-Q", "priority,ai_generation", "--loglevel=INFO", "--concurrency=8", "--prefetch-multiplier=1", "--max-tasks-per-child=750"]
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    deploy:
+      resources:
+        limits: { cpus: "3.00", memory: 2G }
+
+  scheduler:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    depends_on: [redis, postgres]
+    command: ["celery", "-A", "app.core.celery_app.celery_app", "beat", "--loglevel=INFO"]
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [bot]
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+      - nginx-cache:/var/cache/nginx
+    ports: ["80:80", "443:443"]
+    networks: [edge]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file: .env
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server /usr/local/etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD""]
+    env_file: .env
+    volumes:
+      - redisdata:/data
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a "$${REDIS_PASSWORD}" PING | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [backend]
+    expose: ["9090"]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: change_me_immediately
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_STRICT_TRANSPORT_SECURITY: "true"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks: [backend]
+    expose: ["3000"]
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  pgdata:
+  redisdata:
+  prometheus-data:
+  grafana-data:
+  nginx-cache:

@@ -1,0 +1,8 @@
+[nginx-rarehandle]
+enabled = true
+filter = nginx-rarehandle
+logpath = /var/log/nginx/access.log
+findtime = 300
+maxretry = 60
+bantime = 3600
+action = iptables-multiport[name=rarehandle, port="http,https"]
