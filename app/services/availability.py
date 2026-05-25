@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import httpx
-from pyrogram import Client
-from pyrogram.errors import UsernameInvalid, UsernameOccupied, FloodWait
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import get_settings
@@ -52,6 +50,11 @@ class AvailabilityChecker:
         return result
 
     async def _telegram(self, username: str) -> AvailabilityResult:
+        # Pyrogram imports sync helpers that call asyncio.get_event_loop() at import time.
+        # Import lazily inside a running coroutine so uvloop/Python 3.13 always has a current loop.
+        from pyrogram import Client
+        from pyrogram.errors import FloodWait, UsernameInvalid, UsernameOccupied
+
         settings = get_settings()
         start = time.perf_counter()
         async with Client(settings.pyrogram_session_name, api_id=settings.telegram_api_id, api_hash=settings.telegram_api_hash, in_memory=False) as app:

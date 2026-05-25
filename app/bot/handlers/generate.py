@@ -21,7 +21,7 @@ from app.services.generation import UsernameGenerator
 from app.services.pricing import PricingContext, PricingEngine
 from app.services.quota import QuotaService
 from app.services.reservation import ReservationError, ReservationService
-from app.workers.tasks import enqueue_availability_check
+from app.core.celery_app import celery_app
 
 router = Router(name="generate")
 
@@ -64,7 +64,8 @@ async def generate(message: Message, db_session: AsyncSession, security_actor: A
         stmt = insert(UsernameAsset).values(username=n.username, normalized=n.username.lower(), source="generated", style=style, rarity_score=n.rarity_score, status=UsernameStatus.GENERATED, price_rub=price, availability_platform="telegram").on_conflict_do_update(index_elements=["normalized", "availability_platform"], set_={"rarity_score": n.rarity_score, "style": style, "price_rub": price}).returning(UsernameAsset.id)
         await db_session.execute(stmt)
         queue = "priority" if user.tier != UserTier.FREE else "availability"
-        enqueue_availability_check.apply_async(args=[n.username, "telegram", user.id], queue=queue, priority=8 if user.tier != UserTier.FREE else 3)
+        task_name = "availability.check_priority" if user.tier != UserTier.FREE else "availability.check"
+        celery_app.send_task(task_name, args=[n.username, "telegram", user.id], queue=queue, priority=8 if user.tier != UserTier.FREE else 3)
         lines.append(f"@{n.username} · rarity={n.rarity_score} · {price} RUB")
     await message.answer("\n".join(lines), reply_markup=reserve_keyboard(names[0].username) if names else None)
 
